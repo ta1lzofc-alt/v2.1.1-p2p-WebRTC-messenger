@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>P2P Чат - Домашняя сеть</title>
+    <style>
+        * { box-sizing: border-box; font-family: 'Segoe UI', sans-serif; margin: 0; padding: 0; }
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .container {
+            max-width: 800px;
+            width: 100%;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+        .header h1 { font-size: 24px; margin-bottom: 5px; }
+        .header p { font-size: 12px; opacity: 0.9; }
+        .panel {
+            padding: 20px;
+            background: #f8f9fa;
+            border-bottom: 1px solid #e0e0e0;
+        }
+        .info-card {
+            background: white;
+            border-radius: 12px;
+            padding: 15px;
+            margin-bottom: 15px;
+            border: 1px solid #e0e0e0;
+        }
+        .label { font-size: 12px; color: #6c757d; margin-bottom: 5px; }
+        .peer-id {
+            font-family: monospace;
+            font-size: 20px;
+            font-weight: bold;
+            color: #667eea;
+            cursor: pointer;
+            word-break: break-all;
+        }
+        .status {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+        .status-offline { background: #dc2626; }
+        .status-online { background: #10b981; }
+        .status-connecting { background: #f59e0b; animation: pulse 1s infinite; }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        .connect-box {
+            background: #f0fdf4;
+            border: 2px solid #86efac;
+            border-radius: 12px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+        .connect-box h4 { margin-bottom: 12px; color: #166534; }
+        .connect-input {
+            display: flex;
+            gap: 10px;
+        }
+        .connect-input input {
+            flex: 1;
+            padding: 10px;
+            border: 1px solid #86efac;
+            border-radius: 8px;
+            font-family: monospace;
+            font-size: 14px;
+        }
+        .connect-input button {
+            padding: 10px 20px;
+            background: #22c55e;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        .connect-input button:hover { background: #16a34a; }
+        .chat-area { padding: 20px; }
+        .messages {
+            background: #f8f9fa;
+            border-radius: 12px;
+            min-height: 350px;
+            max-height: 350px;
+            overflow-y: auto;
+            padding: 15px;
+            margin-bottom: 15px;
+            border: 1px solid #e0e0e0;
+        }
+        .message { margin-bottom: 12px; }
+        .message.system { text-align: center; }
+        .message.system span {
+            background: #e2e8f0;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            color: #475569;
+            display: inline-block;
+        }
+        .message.me { text-align: right; }
+        .message.me .bubble {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            display: inline-block;
+            padding: 8px 14px;
+            border-radius: 18px 18px 4px 18px;
+            max-width: 70%;
+            word-wrap: break-word;
+        }
+        .message.peer { text-align: left; }
+        .message.peer .bubble {
+            background: white;
+            border: 1px solid #e0e0e0;
+            display: inline-block;
+            padding: 8px 14px;
+            border-radius: 18px 18px 18px 4px;
+            max-width: 70%;
+            word-wrap: break-word;
+        }
+        .input-area {
+            display: flex;
+            gap: 10px;
+        }
+        .input-area textarea {
+            flex: 1;
+            padding: 10px;
+            border: 2px solid #e0e0e0;
+            border-radius: 12px;
+            resize: vertical;
+            font-family: inherit;
+            font-size: 14px;
+        }
+        .input-area textarea:focus { outline: none; border-color: #667eea; }
+        .input-area button {
+            padding: 10px 24px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        .input-area button:hover:not(:disabled) { transform: scale(0.98); }
+        button:disabled, textarea:disabled { opacity: 0.5; cursor: not-allowed; }
+        .copy-hint { font-size: 10px; color: #6c757d; margin-top: 4px; }
+        .server-info {
+            background: #e0e7ff;
+            border-radius: 8px;
+            padding: 8px;
+            margin-top: 10px;
+            font-size: 11px;
+            text-align: center;
+            color: #4338ca;
+        }
+        .network-hint {
+            background: #dcfce7;
+            border-radius: 8px;
+            padding: 8px;
+            margin-top: 10px;
+            font-size: 11px;
+            text-align: center;
+            color: #166534;
+        }
+        .error-badge {
+            background: #fee2e2;
+            color: #dc2626;
+            padding: 4px 8px;
+            border-radius: 6px;
+            font-size: 11px;
+            margin-top: 8px;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="header">
+        <h1>🔗 P2P Чат</h1>
+        <p>Прямое соединение | Домашняя сеть</p>
+    </div>
+
+    <div class="panel">
+        <div class="info-card">
+            <div class="label">🆔 ВАШ ID</div>
+            <div class="peer-id" id="myPeerId">-</div>
+            <div class="copy-hint">⬅️ Нажмите, чтобы скопировать</div>
+        </div>
+        <div class="info-card">
+            <div class="label">📡 СТАТУС</div>
+            <div><span class="status status-offline" id="statusIndicator"></span><span id="statusText">Подключение...</span></div>
+        </div>
+        <div class="server-info">
+            🌐 Signalling сервер: 192.168.1.8:8080
+        </div>
+        <div class="network-hint">
+            💡 Все компьютеры должны быть в одной сети (192.168.1.x)
+        </div>
+    </div>
+
+    <div class="chat-area">
+        <div class="connect-box">
+            <h4>🔌 ПОДКЛЮЧИТЬСЯ К СОБЕСЕДНИКУ</h4>
+            <div class="connect-input">
+                <input type="text" id="targetPeerId" placeholder="Введите Peer ID собеседника (число)">
+                <button id="connectBtn">Установить P2P</button>
+            </div>
+        </div>
+
+        <div class="messages" id="messages">
+            <div class="message system"><span>✨ Ожидание подключения к серверу...</span></div>
+        </div>
+
+        <div class="input-area">
+            <textarea id="messageInput" rows="2" placeholder="Поле заблокировано до P2P соединения" disabled></textarea>
+            <button id="sendBtn" disabled>Отправить</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    // ========== ПЕРЕМЕННЫЕ ==========
+    let ws = null;
+    let pc = null;
+    let dc = null;
+    let myId = null;
+    let connectedPeerId = null;
+    let p2pActive = false;
+
+    // DOM элементы
+    const myPeerIdSpan = document.getElementById('myPeerId');
+    const statusIndicator = document.getElementById('statusIndicator');
+    const statusTextSpan = document.getElementById('statusText');
+    const messagesDiv = document.getElementById('messages');
+    const targetPeerIdInput = document.getElementById('targetPeerId');
+    const connectBtn = document.getElementById('connectBtn');
+    const messageInput = document.getElementById('messageInput');
+    const sendBtn = document.getElementById('sendBtn');
+
+    // WebRTC настройки
+    const rtcConfig = {
+        iceServers: [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' }
+        ]
+    };
+
+    // ========== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ==========
+    function addMessage(text, type = 'system') {
+        const msgDiv = document.createElement('div');
+        msgDiv.className = `message ${type}`;
+
+        if (type === 'system') {
+            msgDiv.innerHTML = `<span>📢 ${escapeHtml(text)}</span>`;
+        } else {
+            const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            msgDiv.innerHTML = `<div class="bubble">${escapeHtml(text)}</div><div style="font-size:10px; color:#9ca3af; margin-top:4px;">${time}</div>`;
+        }
+
+        messagesDiv.appendChild(msgDiv);
+        messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    }
+
+    function escapeHtml(str) {
+        if (!str) return '';
+        return str.replace(/[&<>]/g, function(m) {
+            if (m === '&') return '&amp;';
+            if (m === '<') return '&lt;';
+            if (m === '>') return '&gt;';
+            return m;
+        });
+    }
+
+    function setStatus(status, isConnected = false, isConnecting = false) {
+        statusTextSpan.textContent = status;
+        if (isConnected) {
+            statusIndicator.className = 'status status-online';
+        } else if (isConnecting) {
+            statusIndicator.className = 'status status-connecting';
+        } else {
+            statusIndicator.className = 'status status-offline';
+        }
+    }
+
+    function enableChat(enabled) {
+        if (enabled && p2pActive && dc && dc.readyState === 'open') {
+            messageInput.disabled = false;
+            sendBtn.disabled = false;
+            messageInput.placeholder = 'Введите сообщение...';
+            messageInput.focus();
+        } else {
+            messageInput.disabled = true;
+            sendBtn.disabled = true;
+            messageInput.placeholder = 'Ожидание P2P соединения...';
+        }
+    }
+
+    // ========== WEBRTC ФУНКЦИИ ==========
+    async function createOffer(targetId) {
+        if (pc) { pc.close(); pc = null; }
+
+        pc = new RTCPeerConnection(rtcConfig);
+
+        pc.onicecandidate = (e) => {
+            if (e.candidate && ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                    type: 'ice-candidate',
+                    targetPeerId: targetId,
+                    candidate: e.candidate
+                }));
+            }
+        };
+
+        pc.oniceconnectionstatechange = () => {
+            console.log('ICE состояние:', pc.iceConnectionState);
+            if (pc.iceConnectionState === 'connected') {
+                p2pActive = true;
+                setStatus('P2P активен', true);
+                addMessage('✅ P2P соединение установлено!', 'system');
+                enableChat(true);
+            } else if (pc.iceConnectionState === 'disconnected') {
+                p2pActive = false;
+                setStatus('P2P разорван', false);
+                addMessage('❌ P2P соединение разорвано', 'system');
+                enableChat(false);
+            }
+        };
+
+        pc.ondatachannel = (e) => { dc = e.channel; setupDataChannel(); };
+        dc = pc.createDataChannel('chat');
+        setupDataChannel();
+
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+
+        ws.send(JSON.stringify({ type: 'offer', targetPeerId: targetId, sdp: offer }));
+        setStatus('Установка P2P...', false, true);
+        addMessage(`🔍 Отправлен запрос Peer ${targetId}`, 'system');
+    }
+
+    async function handleOffer(data, fromId) {
+        if (pc) { pc.close(); pc = null; }
+
+        pc = new RTCPeerConnection(rtcConfig);
+
+        pc.onicecandidate = (e) => {
+            if (e.candidate && ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                    type: 'ice-candidate',
+                    targetPeerId: fromId,
+                    candidate: e.candidate
+                }));
+            }
+        };
+
+        pc.oniceconnectionstatechange = () => {
+            if (pc.iceConnectionState === 'connected') {
+                p2pActive = true;
+                setStatus('P2P активен', true);
+                addMessage('✅ P2P соединение установлено!', 'system');
+                enableChat(true);
+            }
+        };
+
+        pc.ondatachannel = (e) => { dc = e.channel; setupDataChannel(); };
+
+        await pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+
+        ws.send(JSON.stringify({ type: 'answer', targetPeerId: fromId, sdp: answer }));
+        setStatus('Принятие соединения...', false, true);
+        addMessage(`📞 Принят запрос от Peer ${fromId}`, 'system');
+        connectedPeerId = fromId;
+    }
+
+    async function handleAnswer(data, fromId) {
+        if (pc && pc.signalingState === 'have-local-offer') {
+            await pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
+            connectedPeerId = fromId;
+        }
+    }
+
+    async function handleIceCandidate(data) {
+        if (pc && data.candidate) {
+            try {
+                await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
+            } catch(e) { console.error('ICE ошибка:', e); }
+        }
+    }
+
+    function setupDataChannel() {
+        if (!dc) return;
+
+        dc.onopen = () => {
+            p2pActive = true;
+            setStatus('P2P активен', true);
+            addMessage('✅ P2P соединение установлено!', 'system');
+            enableChat(true);
+        };
+
+        dc.onclose = () => {
+            p2pActive = false;
+            setStatus('P2P разорван', false);
+            addMessage('❌ P2P соединение разорвано', 'system');
+            enableChat(false);
+        };
+
+        dc.onmessage = (e) => { addMessage(e.data, 'peer'); };
+    }
+
+    function sendMessage() {
+        if (!p2pActive || !dc || dc.readyState !== 'open') {
+            addMessage('⚠️ Нет активного P2P соединения', 'system');
+            return;
+        }
+        const text = messageInput.value.trim();
+        if (!text) return;
+        dc.send(text);
+        addMessage(text, 'me');
+        messageInput.value = '';
+    }
+
+    // ========== WEBSOCKET ПОДКЛЮЧЕНИЕ ==========
+    function connectWebSocket() {
+        setStatus('Подключение к серверу...', false, true);
+
+        // ИСПРАВЛЕНО: используем ваш реальный IP
+        ws = new WebSocket('ws://192.168.1.8:8080');
+
+        ws.onopen = () => {
+            console.log('✅ WebSocket подключён к 192.168.1.8:8080');
+            addMessage('✅ Соединение с сервером установлено', 'system');
+        };
+
+        ws.onmessage = async (e) => {
+            try {
+                const data = JSON.parse(e.data);
+                console.log('📩 Получено:', data);
+
+                switch(data.type) {
+                    case 'init':
+                        myId = data.peerId;
+                        myPeerIdSpan.textContent = myId;
+                        setStatus('Готов к подключению', false);
+                        addMessage(`✅ Ваш ID: ${myId}`, 'system');
+                        addMessage(`💡 Дайте этот ID собеседнику`, 'system');
+                        break;
+                    case 'offer': await handleOffer(data, data.from); break;
+                    case 'answer': await handleAnswer(data, data.from); break;
+                    case 'ice-candidate': await handleIceCandidate(data); break;
+                    case 'error': addMessage(`⚠️ ${data.message}`, 'system'); break;
+                }
+            } catch(err) { console.error('Ошибка:', err); }
+        };
+
+        ws.onerror = () => {
+            setStatus('Ошибка подключения', false);
+            addMessage('❌ Не удалось подключиться к серверу 192.168.1.8:8080', 'system');
+            addMessage('💡 Проверьте: 1) Запущен ли сервер? 2) Открыт ли порт 8080?', 'system');
+        };
+
+        ws.onclose = () => {
+            setStatus('Отключено от сервера', false);
+            addMessage('🔌 Соединение с сервером потеряно', 'system');
+            setTimeout(connectWebSocket, 5000);
+        };
+    }
+
+    function initP2P() {
+        const target = targetPeerIdInput.value.trim();
+        if (!target) { addMessage('⚠️ Введите Peer ID собеседника', 'system'); return; }
+        if (target === myId) { addMessage('⚠️ Нельзя подключиться к самому себе', 'system'); return; }
+        createOffer(target);
+    }
+
+    // ========== ОБРАБОТЧИКИ ==========
+    myPeerIdSpan.onclick = () => {
+        if (myId) {
+            navigator.clipboard.writeText(myId);
+            addMessage('📋 Peer ID скопирован!', 'system');
+        }
+    };
+    connectBtn.onclick = initP2P;
+    sendBtn.onclick = sendMessage;
+    messageInput.onkeypress = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } };
+    targetPeerIdInput.onkeypress = (e) => { if (e.key === 'Enter') initP2P(); };
+
+    // ========== ЗАПУСК ==========
+    connectWebSocket();
+    console.log('P2P Чат запущен | Сервер: 192.168.1.8:8080');
+</script>
+</body>
+</html>
