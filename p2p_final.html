@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>P2P chat</title>
+    <style>
+        * { box-sizing: border-box; font-family: system-ui, sans-serif; }
+        body { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; display: flex; justify-content: center; align-items: center; margin: 0; padding: 20px; }
+        .chat { background: white; border-radius: 24px; width: 100%; max-width: 600px; overflow: hidden; box-shadow: 0 20px 40px rgba(0,0,0,0.2); }
+        .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; text-align: center; }
+        .header h1 { margin: 0; font-size: 24px; }
+        .header p { margin: 5px 0 0; opacity: 0.9; font-size: 12px; }
+        .status { padding: 15px 20px; background: #f8f9fa; border-bottom: 1px solid #e0e0e0; text-align: center; font-weight: bold; }
+        .status.online { background: #d1fae5; color: #065f46; }
+        .status.offline { background: #fee2e2; color: #991b1b; }
+        .status.connecting { background: #fef3c7; color: #92400e; }
+        .messages { height: 350px; overflow-y: auto; padding: 20px; background: #fafafa; }
+        .msg { margin-bottom: 12px; display: flex; }
+        .msg.me { justify-content: flex-end; }
+        .msg.peer { justify-content: flex-start; }
+        .msg.sys { justify-content: center; }
+        .bubble { max-width: 70%; padding: 8px 14px; border-radius: 18px; word-wrap: break-word; }
+        .msg.me .bubble { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-radius: 18px 18px 4px 18px; }
+        .msg.peer .bubble { background: white; border: 1px solid #e0e0e0; color: #333; border-radius: 18px 18px 18px 4px; }
+        .msg.sys .bubble { background: #e2e8f0; color: #475569; font-size: 12px; border-radius: 20px; }
+        .input-area { display: flex; padding: 15px 20px; background: white; border-top: 1px solid #e0e0e0; gap: 10px; }
+        .input-area input { flex: 1; padding: 12px; border: 1px solid #ccc; border-radius: 24px; outline: none; font-size: 14px; }
+        .input-area button { padding: 12px 24px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 24px; cursor: pointer; font-weight: bold; }
+        .input-area button:disabled, .input-area input:disabled { opacity: 0.5; cursor: not-allowed; }
+        .ice-status { font-size: 11px; color: #6c757d; text-align: center; padding: 8px; background: #f8f9fa; }
+    </style>
+</head>
+<body>
+<div class="chat">
+    <div class="header">
+        <h1>P2P chat</h1>
+        <p>Direct connection via WebRTC</p>
+    </div>
+    
+    <div class="status offline" id="status">Connecting to server...</div>
+    
+    <div class="messages" id="messages">
+        <div class="msg sys"><div class="bubble">Waiting for the interlocutor...</div></div>
+    </div>
+    
+    <div class="input-area">
+        <input type="text" id="msgInput" placeholder="Message" disabled>
+        <button id="sendBtn" disabled>Send</button>
+    </div>
+    <div class="ice-status" id="iceStatus"></div>
+</div>
+
+<script>
+// ============================================
+// ⚠️ CHANGE IP TO YOUR SERVER MACHINE IP ⚠️
+// ============================================
+const SIGNALLING_URL = 'ws://192.168.1.8:8080';
+
+let ws = null;
+let pc = null;
+let dc = null;
+let p2pReady = false;
+
+const statusDiv = document.getElementById('status');
+const messagesDiv = document.getElementById('messages');
+const msgInput = document.getElementById('msgInput');
+const sendBtn = document.getElementById('sendBtn');
+const iceStatusDiv = document.getElementById('iceStatus');
+
+function addMessage(text, type = 'sys') {
+    const div = document.createElement('div');
+    div.className = `msg ${type}`;
+    div.innerHTML = `<div class="bubble">${escapeHtml(text)}</div>`;
+    messagesDiv.appendChild(div);
+    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+}
+
+function escapeHtml(str) {
+    if (!str) return '';
+    return str.replace(/[&<>]/g, function(m) {
+        if (m === '&') return '&amp;';
+        if (m === '<') return '&lt;';
+        if (m === '>') return '&gt;';
+        return m;
+    });
+}
+
+function setStatus(text, state) {
+    statusDiv.textContent = text;
+    statusDiv.className = 'status ' + state;
+}
+
+function setIceStatus(text) {
+    iceStatusDiv.textContent = text;
+}
+
+async function startP2P(role) {
+    setIceStatus('ICE: initialisation...');
+
+    const config = { iceServers: [] };
+    pc = new RTCPeerConnection(config);
+
+    pc.onicecandidate = function(e) {
+        if (e.candidate && ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: 'candidate', candidate: e.candidate }));
+        }
+    };
+
+    pc.oniceconnectionstatechange = function() {
+        setIceStatus('ICE: ' + pc.iceConnectionState);
+        if (pc.iceConnectionState === 'connected') {
+            setStatus('P2P connection established!', 'online');
+            p2pReady = true;
+            msgInput.disabled = false;
+            sendBtn.disabled = false;
+            addMessage('Direct P2P connection established!', 'sys');
+            msgInput.focus();
+        } else if (pc.iceConnectionState === 'failed') {
+            setStatus('Connection error', 'offline');
+            addMessage("Couldn't establish P2P connection.", 'sys');
+        }
+    };
+
+    if (role === 'offer') {
+        dc = pc.createDataChannel('chat');
+        setupDC();
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        ws.send(JSON.stringify({ type: 'offer', sdp: offer.sdp }));
+        setStatus('Setting P2P...', 'connecting');
+    } else {
+        pc.ondatachannel = function(e) {
+            dc = e.channel;
+            setupDC();
+        };
+        setStatus('Setting P2P...', 'connecting');
+    }
+}
+
+function setupDC() {
+    if (!dc) return;
+    dc.onopen = function() { p2pReady = true; };
+    dc.onclose = function() {
+        p2pReady = false;
+        msgInput.disabled = true;
+        sendBtn.disabled = true;
+    };
+    dc.onmessage = function(e) { addMessage(e.data, 'peer'); };
+}
+
+function sendMessage() {
+    if (!p2pReady || !dc || dc.readyState !== 'open') {
+        addMessage('No active P2P connection', 'sys');
+        return;
+    }
+    const text = msgInput.value.trim();
+    if (!text) return;
+    dc.send(text);
+    addMessage(text, 'me');
+    msgInput.value = '';
+}
+
+ws = new WebSocket(SIGNALLING_URL);
+ws.onopen = function() { addMessage('Connected to server', 'sys'); };
+ws.onmessage = async function(e) {
+    const data = JSON.parse(e.data);
+    console.log('Received:', data);
+
+    if (data.type === 'start') {
+        addMessage('Interlocutor has been found!', 'sys');
+        await startP2P(data.role);
+    } else if (data.type === 'offer') {
+        if (pc) {
+            await pc.setRemoteDescription(new RTCSessionDescription({ type: 'offer', sdp: data.sdp }));
+            const answer = await pc.createAnswer();
+            await pc.setLocalDescription(answer);
+            ws.send(JSON.stringify({ type: 'answer', sdp: answer.sdp }));
+        }
+    } else if (data.type === 'answer') {
+        if (pc) {
+            await pc.setRemoteDescription(new RTCSessionDescription({ type: 'answer', sdp: data.sdp }));
+        }
+    } else if (data.type === 'candidate') {
+        if (pc && data.candidate) {
+            try {
+                await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
+            } catch(e) {
+                console.error('ICE error:', e);
+            }
+        }
+    }
+};
+ws.onclose = function() { setStatus('Connection lost', 'offline'); };
+ws.onerror = function() { addMessage('Failed to connect to server', 'sys'); };
+
+sendBtn.onclick = sendMessage;
+msgInput.onkeypress = function(e) { if (e.key === 'Enter') sendMessage(); };
+</script>
+</body>
+</html>
